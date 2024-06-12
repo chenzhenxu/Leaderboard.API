@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33627.172
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Leaderboard.API", "WebApplication1\Leaderboard.API.csproj", "{9775CCB6-FB63-42F2-A5C1-2E61DEB5454B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Leaderboard.API", "Leaderboard.API\Leaderboard.API.csproj", "{9775CCB6-FB63-42F2-A5C1-2E61DEB5454B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest", "UnitTest\UnitTest.csproj", "{F993E7D4-C9D3-4882-9ECC-FCBF1C1798A4}"
 EndProject
