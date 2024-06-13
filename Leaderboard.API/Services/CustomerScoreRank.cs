@@ -83,6 +83,11 @@ namespace Leaderboard.API.Services
             {
                 start = 0;
             }
+            if (start > LeaderboardCustomers.Count)
+            {
+                return leaderBoardItems;
+            }
+
             int length;
             if (end >= LeaderboardCustomers.Count)
             {

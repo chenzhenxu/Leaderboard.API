@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<CustomerScoreRank>();
+builder.Services.AddSingleton<CustomerScoreRankSkipList>();
 
 var app = builder.Build();
 
@@ -22,18 +23,18 @@ app.UseHttpsRedirection();
 
 
 
-app.MapPost("/customer/{customerid}/score/{score}", (long customerid, decimal score, [FromServices]CustomerScoreRank customerScoreRank) =>
+app.MapPost("/customer/{customerid}/score/{score}", (long customerid, decimal score, [FromServices] CustomerScoreRankSkipList customerScoreRankSkipList) =>
 {
     if (score > 1000 || score < -1000)
     {
         return Results.BadRequest("Invalid score");
     }
-    var newScore = customerScoreRank.UpdateCustomerScore(customerid, score);    
+    var newScore = customerScoreRankSkipList.UpdateCustomerScore(customerid, score);    
     
     return Results.Ok(newScore);
 });
 
-app.MapGet("/leaderboard", (int start, int end, [FromServices] CustomerScoreRank customerScoreRank) =>
+app.MapGet("/leaderboard", (int start, int end, [FromServices] CustomerScoreRankSkipList customerScoreRankSkipList) =>
 {
     if (start==0)
     {
@@ -48,19 +49,14 @@ app.MapGet("/leaderboard", (int start, int end, [FromServices] CustomerScoreRank
         return Results.BadRequest("start rank should be less than or equal to end rank");
     }
 
-    var customerRankResults = customerScoreRank.GetRankResults(start,end);
+    var customerRankResults = customerScoreRankSkipList.GetRankResults(start,end);
     return Results.Ok(customerRankResults);
 });
 
-app.MapGet("/leaderboard/{customerid}", (long customerid, int high, int low, [FromServices] CustomerScoreRank customerScoreRank) =>
+app.MapGet("/leaderboard/{customerid}", (long customerid, int high, int low, [FromServices] CustomerScoreRankSkipList customerScoreRankSkipList) =>
 {
-    var customerRankResults = customerScoreRank.GetRankResults(customerid,high,low);
+    var customerRankResults = customerScoreRankSkipList.GetRankResults(customerid,high,low);
     return Results.Ok(customerRankResults);
 });
 
 app.Run();
-
-internal record WeatherForecast(DateTime Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Leaderboard.API\Leaderboard.API.csproj" />
     <ProjectReference Include="..\WebApplication1\Leaderboard.API.csproj" />
   </ItemGroup>
 
