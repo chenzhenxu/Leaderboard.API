@@ -1,16 +1,14 @@
 ﻿using Leaderboard.API.Models;
-using Microsoft.EntityFrameworkCore.Infrastructure.Internal;
-using System;
+using Microsoft.EntityFrameworkCore.Query;
 using System.Text;
-using System.Xml.Linq;
 
 namespace Leaderboard.API.DataStructures
 {
     public class SkipList : ICollection<Customer>, IEnumerable<Customer>
     {
+        private static readonly object AddAndRemoveLock = new object();
         private int _count { get; set; }
         private int _currentMaxLevel { get; set; }
-
         private Random _randomizer { get; set; }
         private SkipListNode _firstNode { get; set; }
 
@@ -37,7 +35,7 @@ namespace Leaderboard.API.DataStructures
 
             for (int i = 0; i < MaxLevel; i++)
             {
-                _firstNode.Forwards[i] = _firstNode;
+                _firstNode.SkipListLevels[i].Forward = _firstNode;
             }
         }
 
@@ -73,43 +71,60 @@ namespace Leaderboard.API.DataStructures
         {
             var current = _firstNode;
             var toBeUpdated = new SkipListNode[MaxLevel];
+            int[] rank = new int[MaxLevel];
 
-            for (int i = _currentMaxLevel - 1; i >= 0; --i)
+            lock (AddAndRemoveLock)
             {
-                while (current.Forwards[i] != _firstNode && current.Forwards[i].CompareToExtend(item.CustomerId, item.Score) > 0)
+
+                for (int i = _currentMaxLevel - 1; i >= 0; i--)
                 {
-                    current = current.Forwards[i];
+                    rank[i] = i == _currentMaxLevel - 1 ? 0 : rank[i + 1];
+                    while (current.SkipListLevels[i].Forward != _firstNode && current.SkipListLevels[i].Forward.CompareToExtend(item.CustomerId, item.Score) > 0)
+                    {
+                        rank[i] = rank[i] + current.SkipListLevels[i].Span;
+                        current = current.SkipListLevels[i].Forward;
+
+                    }
+                    toBeUpdated[i] = current;
                 }
-                toBeUpdated[i] = current;
-            }
 
-            current = current.Forwards[0];
+                current = current.SkipListLevels[0].Forward;
 
 
-            int level = _getNextLevel();
-            if (level > _currentMaxLevel)
-            {
-                for (int i = _currentMaxLevel; i < level; ++i)
+                int level = _getNextLevel();
+                if (level > _currentMaxLevel)
                 {
-                    toBeUpdated[i] = _firstNode;
+                    for (int i = _currentMaxLevel; i < level; i++)
+                    {
+                        rank[i] = 0;
+                        toBeUpdated[i] = _firstNode;
+                        toBeUpdated[i].SkipListLevels[i].Span = _count;
+                    }
+                    _currentMaxLevel = level;
                 }
-                _currentMaxLevel = level;
+
+                var newNode = new SkipListNode(item.CustomerId, item.Score, level);
+
+                Console.WriteLine($"new node level:{level}");
+                for (int i = 0; i < level; i++)
+                {
+                    newNode.SkipListLevels[i].Forward = toBeUpdated[i].SkipListLevels[i].Forward;
+                    toBeUpdated[i].SkipListLevels[i].Forward = newNode;
+
+                    newNode.SkipListLevels[i].Span = toBeUpdated[i].SkipListLevels[i].Span - (rank[0] - rank[i]);
+                    toBeUpdated[i].SkipListLevels[i].Span = (rank[0] - rank[i]) + 1;
+                }
+
+                for (int i = level; i < _currentMaxLevel; i++)
+                {
+                    toBeUpdated[i].SkipListLevels[i].Span++;
+                }
+
+                newNode.Backward = toBeUpdated[0];
+                current.Backward = newNode;
+
+                _count++;
             }
-
-            var newNode = new SkipListNode(item.CustomerId, item.Score, level);
-
-            Console.WriteLine($"new node level:{level}");
-            for (int i = 0; i < level; ++i)
-            {
-                newNode.Forwards[i] = toBeUpdated[i].Forwards[i];
-                toBeUpdated[i].Forwards[i] = newNode;
-
-            }
-
-            newNode.Backward = toBeUpdated[0];
-            current.Backward = newNode;
-
-            _count++;
         }
 
         public bool Remove(Customer item)
@@ -124,37 +139,46 @@ namespace Leaderboard.API.DataStructures
             var current = _firstNode;
             var toBeUpdated = new SkipListNode[MaxLevel];
 
-            for (int i = _currentMaxLevel - 1; i >= 0; --i)
+            lock (AddAndRemoveLock)
             {
-                while (current.Forwards[i] != _firstNode && current.Forwards[i].CompareToExtend(item.CustomerId, item.Score) > 0)
+                for (int i = _currentMaxLevel - 1; i >= 0; i--)
                 {
-                    current = current.Forwards[i];
+                    while (current.SkipListLevels[i].Forward != _firstNode && current.SkipListLevels[i].Forward.CompareToExtend(item.CustomerId, item.Score) > 0)
+                    {
+                        current = current.SkipListLevels[i].Forward;
+                    }
+                    toBeUpdated[i] = current;
                 }
-                toBeUpdated[i] = current;
-            }
 
-            current = current.Forwards[0];
+                current = current.SkipListLevels[0].Forward;
 
-            if (current.CompareToExtend(item.CustomerId, item.Score) != 0)
-            {
-                deleteditem = default(long);
-                deletedscore = default;
-                return false;
-            }
-
-            for (int i = 0; i < _currentMaxLevel; ++i)
-            {
-                if (toBeUpdated[i].Forwards[i] == current)
+                if (current.CompareToExtend(item.CustomerId, item.Score) != 0)
                 {
-                    toBeUpdated[i].Forwards[i] = current.Forwards[i];
+                    deleteditem = default(long);
+                    deletedscore = default;
+                    return false;
                 }
+
+                for (int i = 0; i < _currentMaxLevel; i++)
+                {
+                    if (toBeUpdated[i].SkipListLevels[i].Forward == current)
+                    {
+                        toBeUpdated[i].SkipListLevels[i].Span += current.SkipListLevels[i].Span - 1;
+                        toBeUpdated[i].SkipListLevels[i].Forward = current.SkipListLevels[i].Forward;
+
+                    }
+                    else
+                    {
+                        toBeUpdated[i].SkipListLevels[i].Span -= 1;
+                    }
+                }
+                current.Backward = toBeUpdated[0];
+
+                --_count;
+
+                while (_currentMaxLevel > 1 && _firstNode.SkipListLevels[_currentMaxLevel - 1].Forward == _firstNode)
+                    _currentMaxLevel--;
             }
-            current.Backward = toBeUpdated[0];
-
-            --_count;
-
-            while (_currentMaxLevel > 1 && _firstNode.Forwards[_currentMaxLevel - 1] == _firstNode)
-                _currentMaxLevel--;
 
             deleteditem = current.Value;
             deletedscore = current.Score;
@@ -174,11 +198,11 @@ namespace Leaderboard.API.DataStructures
         {
             var current = _firstNode;
 
-            for (int i = _currentMaxLevel - 1; i >= 0; --i)
-                while (current.Forwards[i] != _firstNode && current.Forwards[i].CompareToExtend(item.CustomerId, item.Score) > 0)
-                    current = current.Forwards[i];
+            for (int i = _currentMaxLevel - 1; i >= 0; i--)
+                while (current.SkipListLevels[i].Forward != _firstNode && current.SkipListLevels[i].Forward.CompareToExtend(item.CustomerId, item.Score) > 0)
+                    current = current.SkipListLevels[i].Forward;
 
-            current = current.Forwards[0];
+            current = current.SkipListLevels[0].Forward;
 
             if (current.CompareToExtend(item.CustomerId, item.Score) == 0)
             {
@@ -213,8 +237,8 @@ namespace Leaderboard.API.DataStructures
             }
             result = new Customer
             {
-                CustomerId = _firstNode.Forwards[0].Value,
-                Score = _firstNode.Forwards[0].Score
+                CustomerId = _firstNode.SkipListLevels[0].Forward.Value,
+                Score = _firstNode.SkipListLevels[0].Forward.Score
             };
             return true;
         }
@@ -222,13 +246,13 @@ namespace Leaderboard.API.DataStructures
         public IEnumerator<Customer> GetEnumerator()
         {
             var node = _firstNode;
-            while (node.Forwards[0] != null && node.Forwards[0] != _firstNode)
+            while (node.SkipListLevels[0].Forward != null && node.SkipListLevels[0].Forward != _firstNode)
             {
-                node = node.Forwards[0];
+                node = node.SkipListLevels[0].Forward;
                 yield return new Customer
                 {
-                    CustomerId = node.Forwards[0].Value,
-                    Score = node.Forwards[0].Score
+                    CustomerId = node.SkipListLevels[0].Forward.Value,
+                    Score = node.SkipListLevels[0].Forward.Score
                 }; ;
             }
 
@@ -267,21 +291,30 @@ namespace Leaderboard.API.DataStructures
         public List<Customer> GetRange(int start, int length)
         {
             var rangeCustomers = new List<Customer>();
-            var node = _firstNode;
+            var current = _firstNode;
+            int tranversed = 0;
 
-            for (int i = 0; i < _count; i++)
+            for (int i = _currentMaxLevel - 1; i >= 0; i--)
             {
-
-                if (node.Forwards[0] != null && node.Forwards[0] != _firstNode)
+                while (current.SkipListLevels[i].Forward != _firstNode && (tranversed + (current.SkipListLevels[i].Span) <= start))
                 {
-                    node = node.Forwards[0];
-                    if (i + 1 >= start && (i < (start + length)))
-                        rangeCustomers.Add(new Customer { CustomerId = node.Value, Score = node.Score });
+                    tranversed += current.SkipListLevels[i].Span;
+                    current = current.SkipListLevels[i].Forward;
                 }
-                else
-                    break;
+                if (tranversed == start)
+                {
 
+
+                    while (current != _firstNode && length > 0)
+                    {
+                        rangeCustomers.Add(new Customer { CustomerId = current.Value, Score = current.Score });
+                        current = current.SkipListLevels[0].Forward;
+                        length--;
+                    }
+                    return rangeCustomers;
+                }
             }
+
             return rangeCustomers;
         }
 
@@ -292,16 +325,16 @@ namespace Leaderboard.API.DataStructures
 
             var current = _firstNode;
 
-            for (int i = _currentMaxLevel - 1; i >= 0; --i)
+            for (int i = _currentMaxLevel - 1; i >= 0; i--)
             {
-                while (current.Forwards[i] != _firstNode && current.Forwards[i].CompareToExtend(customer.CustomerId, customer.Score) > 0)
+                while (current.SkipListLevels[i].Forward != _firstNode && current.SkipListLevels[i].Forward.CompareToExtend(customer.CustomerId, customer.Score) > 0)
                 {
-                    current = current.Forwards[i];
-                    firstRank++;
+                    firstRank += current.SkipListLevels[i].Span;
+                    current = current.SkipListLevels[i].Forward;
                 }
             }
 
-            current = current.Forwards[0];
+            current = current.SkipListLevels[0].Forward;
             firstRank++;
 
             if (current.CompareToExtend(customer.CustomerId, customer.Score) == 0)
@@ -321,15 +354,16 @@ namespace Leaderboard.API.DataStructures
                     });
 
                 }
+                rangeCustomers.Reverse();
 
                 //add current customer
                 rangeCustomers.Add(customer);
 
                 // add low nodes
                 var lowNode = current;
-                while (low > 0 && lowNode.Forwards[0] != _firstNode)
+                while (low > 0 && lowNode != _firstNode)
                 {
-                    lowNode = lowNode.Forwards[0];
+                    lowNode = lowNode.SkipListLevels[0].Forward;
                     low--;
 
                     rangeCustomers.Add(new Customer
@@ -352,9 +386,9 @@ namespace Leaderboard.API.DataStructures
             _randomizer = new Random();
             _firstNode = new SkipListNode(default(long), default(decimal), MaxLevel);
 
-            for (int i = 0; i < MaxLevel; ++i)
+            for (int i = 0; i < MaxLevel; i++)
             {
-                _firstNode.Forwards[i] = _firstNode;
+                _firstNode.SkipListLevels[i].Forward = _firstNode;
             }
 
         }
@@ -365,10 +399,24 @@ namespace Leaderboard.API.DataStructures
             var current = _firstNode;
 
             sb.Append($"Skip List (Level {_currentMaxLevel}) ,count {_count}\n");
-            
-            while (current.Forwards[0] != _firstNode)
+
+            //print header node
+            sb.Append($"c:{current.Value} s:{current.Score} l:{_currentMaxLevel}");
+
+            int firstNodeLevel = 0;
+            while (firstNodeLevel < _currentMaxLevel)
             {
-                current = current.Forwards[0];
+                sb.Append("\t");
+                firstNodeLevel++;
+            }
+            sb.Append($"L{_currentMaxLevel} Span{current.SkipListLevels[_currentMaxLevel - 1].Span}");
+            sb.Append("\n");
+
+            //print other nodes
+
+            while (current.SkipListLevels[0].Forward != _firstNode)
+            {
+                current = current.SkipListLevels[0].Forward;
 
                 sb.Append($"c:{current.Value} s:{current.Score} l:{current.Level}");
                 int level = 0;
@@ -377,10 +425,10 @@ namespace Leaderboard.API.DataStructures
                     sb.Append("\t");
                     level++;
                 }
-                sb.Append($"L{current.Level}");
+                sb.Append($"L{current.Level} Span{current.SkipListLevels[current.Level - 1].Span}");
                 sb.Append("\n");
-                
-            }           
+
+            }
 
             sb.Append("\n\n");
 

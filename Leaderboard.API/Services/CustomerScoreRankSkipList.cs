@@ -1,5 +1,6 @@
 ﻿using Leaderboard.API.DataStructures;
 using Leaderboard.API.Models;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -8,7 +9,7 @@ namespace Leaderboard.API.Services
     public class CustomerScoreRankSkipList
     {
         //all the customers and their scores
-        public Dictionary<long, decimal> CustomerScores = new Dictionary<long, decimal>();
+        public ConcurrentDictionary<long, decimal> CustomerScores = new ConcurrentDictionary<long, decimal>();
         // Customers participating in the leaderboard
         public SkipList LeaderboardCustomers { get; set; } = new SkipList();
 
@@ -22,7 +23,12 @@ namespace Leaderboard.API.Services
             //update all customer dic with new score
             if (!CustomerScores.ContainsKey(customerId))
             {
-                CustomerScores.Add(customerId, score);
+                if (!CustomerScores.TryAdd(customerId, score))
+                {
+                    Console.WriteLine($"CustomerScores.TryAdd({customerId}, {score}) failed when it should have succeeded");
+                    return default;
+                    //If necessary, can try again
+                }
                 oldScore = 0;
                 newScore = score;
             }
@@ -40,16 +46,11 @@ namespace Leaderboard.API.Services
             {
                 var newCustomer = new Customer { CustomerId = customerId, Score = newScore };
                 //Check if LeaderboardCustomer exists
-                if (oldCustomer == null)
-                {
-                    LeaderboardCustomers.Add(newCustomer);
-                }
-                else
+                if (oldCustomer != null)
                 {
                     LeaderboardCustomers.Remove(oldCustomer);
-
-                    LeaderboardCustomers.Add(newCustomer);
                 }
+                LeaderboardCustomers.Add(newCustomer);
             }
             else
             {
@@ -86,7 +87,7 @@ namespace Leaderboard.API.Services
             }
             else
             {
-                length = end - start;
+                length = end - start + 1;
             }
 
             var customersResults = LeaderboardCustomers.GetRange(start, length);

@@ -10,7 +10,7 @@ namespace Leaderboard.API.DataStructures
 
         private SkipListNode _backward;
 
-        private SkipListNode[] _forwards;
+        private SkipListLevel[] _skipListLevels;
 
         public SkipListNode(long value,decimal score,int level)
         {
@@ -19,7 +19,10 @@ namespace Leaderboard.API.DataStructures
 
             Value = value;
             Score = score;
-            Forwards = new SkipListNode[level];
+            SkipListLevels = Enumerable
+                                 .Range(1, level)
+                                 .Select(i => new SkipListLevel())
+                                 .ToArray(); ;
         }
 
         public virtual long Value
@@ -34,10 +37,10 @@ namespace Leaderboard.API.DataStructures
             private set { _score = value; }
         }
 
-        public virtual SkipListNode[] Forwards
+        public virtual SkipListLevel[] SkipListLevels
         {
-            get { return _forwards; }
-            private set { _forwards = value; }
+            get { return _skipListLevels; }
+            private set { _skipListLevels = value; }
         }
 
         public virtual SkipListNode Backward
@@ -48,7 +51,7 @@ namespace Leaderboard.API.DataStructures
 
         public virtual int Level
         {
-            get { return Forwards.Length; }
+            get { return SkipListLevels.Length; }
         }
 
         public virtual int CompareTo(SkipListNode other)
@@ -65,5 +68,14 @@ namespace Leaderboard.API.DataStructures
         }
 
         
+    }
+
+    public class SkipListLevel
+    {
+        private SkipListNode _forward = default;
+        public SkipListNode Forward { get => _forward; set => _forward = value; }
+        //The distance  to the next node in this level
+        public int Span { get; set; }
+
     }
 }

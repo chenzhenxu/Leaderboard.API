@@ -10,3 +10,4 @@ var client = new RestClient(options);
 var request = new RestRequest("/customer/123123/score/12", Method.Post);
 RestResponse response = await client.ExecuteAsync(request);
 Console.WriteLine(response.Content);
+
