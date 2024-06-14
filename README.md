@@ -1,0 +1,1 @@
+Using two data structures, skiplist and hash, to achieve the score ranking function. This data structure can achieve a time complexity of O (log n) for searching, inserting, and deleting. For rank range searching, because it is ordered, it is quite fast.
